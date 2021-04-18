@@ -5,7 +5,7 @@ authors = ["Ana Gelez <ana@gelez.xyz>"]
 edition = "2018"
 
 [dependencies]
-bevy = { version = "0.4", default-features = false, features = [
+bevy = { version = "0.5", default-features = false, features = [
     "bevy_gltf",
     "bevy_winit",
     "bevy_wgpu",
