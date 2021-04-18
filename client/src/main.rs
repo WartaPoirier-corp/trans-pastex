@@ -8,6 +8,7 @@ fn main() {
         .add_system(bevy::input::keyboard::keyboard_input_system.system())
         .add_system(move_player.system())
         .add_system(move_camera.system())
+        .add_system(exit.system())
         .run();
 }
 
@@ -90,4 +91,12 @@ fn move_camera(mut query: QuerySet<(Query<(&mut Transform, &bevy::render::camera
     let cam = query.q0_mut();
     let cam = &mut cam.iter_mut().next().unwrap().0;
     cam.translation = player_pos + Vec3::new(5.0, 3.0, 0.0);
+}
+
+fn exit(input: Res<Input<KeyCode>>, mut exit_event: EventWriter<bevy::app::AppExit>) {
+    for key in input.get_just_pressed() {
+        if *key == KeyCode::Escape {
+            exit_event.send(bevy::app::AppExit);
+        }
+    }
 }
