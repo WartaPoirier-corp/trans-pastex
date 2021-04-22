@@ -11,10 +11,12 @@ pub enum State {
 
 enum EcsToPlugin {
     TestEvent(usize, i64),
+    ListPlugins,
 }
 
 enum PluginToEcs {
     TestEvent(usize, i64),
+    ListPlugins(Vec<plugin::Manifest>),
 }
 
 struct PluginEvents(
@@ -30,21 +32,28 @@ fn main() {
         use runestick::FromValue;
 
         let plugins = plugin::Plugins::init();
-        match plug_rx.recv().unwrap() {
-            EcsToPlugin::TestEvent(id, x) => {
-                let res = plugins.0[id].vm.clone().execute(&["test"], (x,)).unwrap().complete().unwrap();
-                let res = i64::from_value(res).unwrap();
-                ecs_tx.send(PluginToEcs::TestEvent(id, res)).unwrap();
-            },
+        loop {
+            match plug_rx.recv().unwrap() {
+                EcsToPlugin::TestEvent(id, x) => {
+                    let res = plugins.0[id].vm.clone().execute(&["test"], (x,)).unwrap().complete().unwrap();
+                    let res = i64::from_value(res).unwrap();
+                    ecs_tx.send(PluginToEcs::TestEvent(id, res)).unwrap();
+                },
+                EcsToPlugin::ListPlugins => {
+                    let manifests = plugins.0.iter().map(|p| p.manifest.clone()).collect();
+                    ecs_tx.send(PluginToEcs::ListPlugins(manifests)).unwrap();
+                },
+            }
         }
-        Ok(()) as Result<(), ()>
     });
 
     App::build()
         .add_state(State::Loading)
         .insert_resource(Msaa { samples: 4 })
         .insert_resource(PluginEvents(std::sync::Mutex::new(plug_tx), std::sync::Mutex::new(ecs_rx)))
+        .insert_resource(PluginUi(None))
         .add_plugins(DefaultPlugins)
+        .add_plugin(bevy_egui::EguiPlugin)
         .add_system_set(SystemSet::on_enter(State::Loading)
             .with_system(map::load_assets.system())
         )
@@ -59,6 +68,8 @@ fn main() {
             .with_system(bevy::input::keyboard::keyboard_input_system.system())
             .with_system(move_player.system())
             .with_system(move_camera.system())
+            .with_system(plugin_window_toggle.system())
+            .with_system(plugin_window.system())
             .with_system(exit.system())
         )
         .run();
@@ -72,15 +83,7 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    plugins: Res<PluginEvents>,
 ) {
-    let tx = plugins.0.lock().unwrap();
-    tx.send(EcsToPlugin::TestEvent(0, 19)).unwrap();
-    let rx = plugins.1.lock().unwrap();
-    match rx.recv().unwrap() {
-        PluginToEcs::TestEvent(id, x) => println!("Plugin #{} responded with {}", id, x),
-    }
-
     let material = asset_server.load("Sakura-1.gltf#Material0");
     let tree = asset_server.load("Sakura-1.gltf#Mesh0/Primitive0");
     // add entities to the world
@@ -149,6 +152,48 @@ fn move_camera(mut query: QuerySet<(Query<(&mut Transform, &bevy::render::camera
     let cam = query.q0_mut();
     let cam = &mut cam.iter_mut().next().unwrap().0;
     cam.translation = player_pos + Vec3::new(5.0, 3.0, 0.0);
+}
+
+struct PluginUi(Option<Vec<plugin::Manifest>>);
+
+fn plugin_window_toggle(input: Res<Input<KeyCode>>, plugins: Res<PluginEvents>, mut ui: ResMut<PluginUi>) {
+    for key in input.get_just_released() {
+        match key {
+            KeyCode::P => {
+                match ui.0 {
+                    Some(_) => ui.0 = None,
+                    None => {
+                        let tx = plugins.0.lock().unwrap();
+                        tx.send(EcsToPlugin::ListPlugins).ok();
+                        let rx = plugins.1.lock().unwrap();
+                        match rx.recv().unwrap() {
+                            PluginToEcs::ListPlugins(manifests) => {
+                                ui.0 = Some(manifests)
+                            }
+                            _ => {},
+                        }
+                    }
+                }
+            }
+            _ => {},
+        }
+    }
+}
+
+fn plugin_window(egui: Res<bevy_egui::EguiContext>, plugins: Res<PluginUi>) {
+    if let Some(ref manifests) = plugins.0 {
+        bevy_egui::egui::Window::new("Plugins").show(egui.ctx(), |ui| {
+            bevy_egui::egui::Grid::new("plugins_table").show(ui, |ui| {
+                for man in manifests {
+                    ui.label(&man.name);
+                    ui.label(&man.description);
+                    ui.label(format!("Par {}", man.authors[0]));
+                    ui.label(format!("Inclus {} items", man.items.len()));
+                    ui.end_row();
+                }
+            });
+        });
+    }
 }
 
 fn exit(input: Res<Input<KeyCode>>, mut exit_event: EventWriter<bevy::app::AppExit>) {

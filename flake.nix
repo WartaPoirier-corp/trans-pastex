@@ -18,13 +18,13 @@
         alsaLib
         glslang
         vulkan-loader
-        x11
+        x11 xorg.libxcb
         httplz
         wasm-bindgen-cli udev wayland
         gnumake vulkan-validation-layers
       ];
       nativeBuildInputs = [ pkgs.pkg-config pkgs.renderdoc ];
-      LD_LIBRARY_PATH = "${pkgs.vulkan-loader}/lib:${pkgs.libxkbcommon}/lib:${pkgs.wayland}/lib";
+      LD_LIBRARY_PATH = "${pkgs.vulkan-loader}/lib:${pkgs.libxkbcommon}/lib:${pkgs.wayland}/lib:${pkgs.xorg.libxcb}/lib";
       RUST_BACKTRACE = 1;
       VK_ICD_FILENAMES="/run/opengl-driver/share/vulkan/icd.d/intel_icd.x86_64.json";
     };

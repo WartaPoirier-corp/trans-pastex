@@ -4,23 +4,23 @@ use runestick::Vm;
 use rune::EmitDiagnostics;
 use std::sync::Arc;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Item {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Item {
     name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Manifest {
-    name: String,
-    description: String,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Manifest {
+    pub name: String,
+    pub description: String,
     icon: String,
-    authors: Vec<String>,
-    items: Vec<Item>,
+    pub authors: Vec<String>,
+    pub items: Vec<Item>,
 }
 
 pub struct Plugin {
     pub vm: Vm,
-    manifest: Manifest,
+    pub manifest: Manifest,
 }
 
 impl Plugin {
