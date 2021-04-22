@@ -1,0 +1,7 @@
+name = "Demo"
+description = "A demo/test plugin"
+icon = "none.png"
+authors = [ "kiwidu38" ]
+
+[[items]]
+name = "Axe"

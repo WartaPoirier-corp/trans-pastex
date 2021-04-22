@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 mod map;
+mod plugin;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum State {
@@ -8,10 +9,41 @@ pub enum State {
     Main,
 }
 
+enum EcsToPlugin {
+    TestEvent(usize, i64),
+}
+
+enum PluginToEcs {
+    TestEvent(usize, i64),
+}
+
+struct PluginEvents(
+    std::sync::Mutex<std::sync::mpsc::Sender<EcsToPlugin>>,
+    std::sync::Mutex<std::sync::mpsc::Receiver<PluginToEcs>>,
+);
+
 fn main() {
+    let (plug_tx, plug_rx) = std::sync::mpsc::channel();
+    let (ecs_tx, ecs_rx) = std::sync::mpsc::channel();
+
+    std::thread::spawn(move || {
+        use runestick::FromValue;
+
+        let plugins = plugin::Plugins::init();
+        match plug_rx.recv().unwrap() {
+            EcsToPlugin::TestEvent(id, x) => {
+                let res = plugins.0[id].vm.clone().execute(&["test"], (x,)).unwrap().complete().unwrap();
+                let res = i64::from_value(res).unwrap();
+                ecs_tx.send(PluginToEcs::TestEvent(id, res)).unwrap();
+            },
+        }
+        Ok(()) as Result<(), ()>
+    });
+
     App::build()
         .add_state(State::Loading)
         .insert_resource(Msaa { samples: 4 })
+        .insert_resource(PluginEvents(std::sync::Mutex::new(plug_tx), std::sync::Mutex::new(ecs_rx)))
         .add_plugins(DefaultPlugins)
         .add_system_set(SystemSet::on_enter(State::Loading)
             .with_system(map::load_assets.system())
@@ -40,7 +72,15 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    plugins: Res<PluginEvents>,
 ) {
+    let tx = plugins.0.lock().unwrap();
+    tx.send(EcsToPlugin::TestEvent(0, 19)).unwrap();
+    let rx = plugins.1.lock().unwrap();
+    match rx.recv().unwrap() {
+        PluginToEcs::TestEvent(id, x) => println!("Plugin #{} responded with {}", id, x),
+    }
+
     let material = asset_server.load("Sakura-1.gltf#Material0");
     let tree = asset_server.load("Sakura-1.gltf#Mesh0/Primitive0");
     // add entities to the world
