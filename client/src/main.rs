@@ -1,7 +1,7 @@
 use bevy::prelude::*;
+use common::plugin::Plugins;
 
 mod map;
-mod plugin;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum State {
@@ -16,7 +16,7 @@ enum EcsToPlugin {
 
 enum PluginToEcs {
     TestEvent(usize, i64),
-    ListPlugins(Vec<plugin::Manifest>),
+    ListPlugins(Vec<common::plugin::Manifest>),
 }
 
 struct PluginEvents(
@@ -31,7 +31,7 @@ fn main() {
     std::thread::spawn(move || {
         use runestick::FromValue;
 
-        let plugins = plugin::Plugins::init();
+        let plugins = Plugins::init();
         loop {
             match plug_rx.recv().unwrap() {
                 EcsToPlugin::TestEvent(id, x) => {
@@ -154,7 +154,7 @@ fn move_camera(mut query: QuerySet<(Query<(&mut Transform, &bevy::render::camera
     cam.translation = player_pos + Vec3::new(5.0, 3.0, 0.0);
 }
 
-struct PluginUi(Option<Vec<plugin::Manifest>>);
+struct PluginUi(Option<Vec<common::plugin::Manifest>>);
 
 fn plugin_window_toggle(input: Res<Input<KeyCode>>, plugins: Res<PluginEvents>, mut ui: ResMut<PluginUi>) {
     for key in input.get_just_released() {

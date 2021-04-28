@@ -5,17 +5,12 @@ use rune::EmitDiagnostics;
 use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Item {
-    name: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Manifest {
     pub name: String,
     pub description: String,
     icon: String,
     pub authors: Vec<String>,
-    pub items: Vec<Item>,
+    pub items: Vec<crate::item::Item>,
 }
 
 pub struct Plugin {
@@ -47,8 +42,6 @@ impl Plugin {
 
         let unit = result.unwrap();
         let vm = Vm::new(Arc::new(ctx.runtime()), Arc::new(unit));
-
-        println!("Loaded this plugin: {:#?}", &manifest);
 
         Plugin {
             vm,
