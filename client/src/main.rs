@@ -1,5 +1,7 @@
 use bevy::prelude::*;
+use common::item::*;
 use common::plugin::Plugins;
+use bevy_egui::EguiContext;
 
 mod map;
 
@@ -23,11 +25,61 @@ struct PluginEvents(
     std::sync::Mutex<std::sync::mpsc::Sender<EcsToPlugin>>,
     std::sync::Mutex<std::sync::mpsc::Receiver<PluginToEcs>>,
 );
+#[derive(Clone)]
+struct InventoryItem {
+    name: String,
+    x: u8,
+    y: u8,
+    quantity: u8,
+}
+
+struct Inventory {
+    items: Vec<Vec<Option<InventoryItem>>>,
+}
+
+impl Inventory {
+    fn new() -> Inventory {
+        let mut items = vec![];
+        for y in 0..5 {
+            let mut subitems = vec![];
+            for x in 0..9 {
+                subitems.push(None);
+            }
+            items.push(subitems);
+        }
+        Inventory { items }
+    }
+
+    fn open_inventory(&self, egui_context: &EguiContext) {
+        bevy_egui::egui::Window::new("Inventory").default_pos((300.0, 220.0)).show(egui_context.ctx(), |ui| {
+            bevy_egui::egui::Grid::new("inventory_table").show(ui, |ui| {
+                for (nby, y) in self.items.clone().into_iter().enumerate() {
+                    for (nbx, x) in y.into_iter().enumerate() {
+                        match x {
+                            Some(item) => {
+                                ui.group(|ui|{
+                                    ui.label("Je suis pas vide");
+                                });
+                            }
+                            None => {
+                                ui.group(|ui|{
+                                    ui.label("Je suis vide");
+                                });
+                            }
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+        });
+    }
+}
 
 fn main() {
     let (plug_tx, plug_rx) = std::sync::mpsc::channel();
     let (ecs_tx, ecs_rx) = std::sync::mpsc::channel();
 
+    let inv: Inventory = Inventory::new();
     std::thread::spawn(move || {
         use runestick::FromValue;
 
@@ -35,14 +87,20 @@ fn main() {
         loop {
             match plug_rx.recv().unwrap() {
                 EcsToPlugin::TestEvent(id, x) => {
-                    let res = plugins.0[id].vm.clone().execute(&["test"], (x,)).unwrap().complete().unwrap();
+                    let res = plugins.0[id]
+                        .vm
+                        .clone()
+                        .execute(&["test"], (x,))
+                        .unwrap()
+                        .complete()
+                        .unwrap();
                     let res = i64::from_value(res).unwrap();
                     ecs_tx.send(PluginToEcs::TestEvent(id, res)).unwrap();
-                },
+                }
                 EcsToPlugin::ListPlugins => {
                     let manifests = plugins.0.iter().map(|p| p.manifest.clone()).collect();
                     ecs_tx.send(PluginToEcs::ListPlugins(manifests)).unwrap();
-                },
+                }
             }
         }
     });
@@ -50,27 +108,32 @@ fn main() {
     App::build()
         .add_state(State::Loading)
         .insert_resource(Msaa { samples: 4 })
-        .insert_resource(PluginEvents(std::sync::Mutex::new(plug_tx), std::sync::Mutex::new(ecs_rx)))
+        .insert_resource(PluginEvents(
+            std::sync::Mutex::new(plug_tx),
+            std::sync::Mutex::new(ecs_rx),
+        ))
         .insert_resource(PluginUi(None))
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy_egui::EguiPlugin)
-        .add_system_set(SystemSet::on_enter(State::Loading)
-            .with_system(map::load_assets.system())
+        .add_system_set(SystemSet::on_enter(State::Loading).with_system(map::load_assets.system()))
+        .add_system_set(
+            SystemSet::on_update(State::Loading).with_system(map::check_assets.system()),
         )
-        .add_system_set(SystemSet::on_update(State::Loading)
-            .with_system(map::check_assets.system())
+        .insert_resource(inv)
+        .add_system_set(
+            SystemSet::on_enter(State::Main)
+                .with_system(setup.system())
+                .with_system(map::spawn_map.system()),
         )
-        .add_system_set(SystemSet::on_enter(State::Main)
-            .with_system(setup.system())
-            .with_system(map::spawn_map.system())
-        )
-        .add_system_set(SystemSet::on_update(State::Main)
-            .with_system(bevy::input::keyboard::keyboard_input_system.system())
-            .with_system(move_player.system())
-            .with_system(move_camera.system())
-            .with_system(plugin_window_toggle.system())
-            .with_system(plugin_window.system())
-            .with_system(exit.system())
+        .add_system_set(
+            SystemSet::on_update(State::Main)
+                .with_system(bevy::input::keyboard::keyboard_input_system.system())
+                .with_system(move_player.system())
+                .with_system(move_camera.system())
+                .with_system(plugin_window_toggle.system())
+                .with_system(plugin_window.system())
+                .with_system(exit.system())
+                .with_system(open_inventory.system()),
         )
         .run();
 }
@@ -89,16 +152,15 @@ fn setup(
     // add entities to the world
 
     for i in 0..10 {
-        commands.spawn()
-            .insert_bundle(PbrBundle {
+        commands.spawn().insert_bundle(PbrBundle {
             mesh: tree.clone(),
             material: material.clone(),
             transform: {
                 let mut transform = Transform::from_translation(Vec3::new(
                     10.0 + (i as f32).cos() * (i as f32),
                     0.0,
-                    ((i as f32) + 7.0) - 2.0 * (i as f32).sin()),
-                );
+                    ((i as f32) + 7.0) - 2.0 * (i as f32).sin(),
+                ));
                 transform.apply_non_uniform_scale(Vec3::new(0.2, 0.2, 0.2));
                 transform
             },
@@ -107,13 +169,15 @@ fn setup(
     }
 
     // cube
-    commands.spawn().insert_bundle(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Cube { size: 0.5 })),
-        material: materials.add(Color::rgb(1.0, 0.7, 0.7).into()),
-        transform: Transform::from_translation(Vec3::new(5.0, 0.5, 5.0)),
-        ..Default::default()
-    })
-    .insert(Player);
+    commands
+        .spawn()
+        .insert_bundle(PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Cube { size: 0.5 })),
+            material: materials.add(Color::rgb(1.0, 0.7, 0.7).into()),
+            transform: Transform::from_translation(Vec3::new(5.0, 0.5, 5.0)),
+            ..Default::default()
+        })
+        .insert(Player);
     // light
     commands.spawn().insert_bundle(LightBundle {
         transform: Transform::from_translation(Vec3::new(10.0, 8.0, 10.0)),
@@ -129,7 +193,11 @@ fn setup(
 
 const SPEED: f32 = 1.0;
 
-fn move_player(time: Res<Time>, input: Res<Input<KeyCode>>, mut player: Query<&mut Transform, With<Player>>) {
+fn move_player(
+    time: Res<Time>,
+    input: Res<Input<KeyCode>>,
+    mut player: Query<&mut Transform, With<Player>>,
+) {
     let player = &mut player.iter_mut().next().unwrap();
     for key in input.get_pressed() {
         let mov = SPEED * time.delta_seconds();
@@ -138,12 +206,17 @@ fn move_player(time: Res<Time>, input: Res<Input<KeyCode>>, mut player: Query<&m
             KeyCode::S | KeyCode::Down => player.translation.x += mov,
             KeyCode::Q | KeyCode::Left => player.translation.z += mov,
             KeyCode::D | KeyCode::Right => player.translation.z -= mov,
-            _ => {},
+            _ => {}
         }
     }
 }
 
-fn move_camera(mut query: QuerySet<(Query<(&mut Transform, &bevy::render::camera::Camera)>, Query<(&Transform, &Player)>)>) {
+fn move_camera(
+    mut query: QuerySet<(
+        Query<(&mut Transform, &bevy::render::camera::Camera)>,
+        Query<(&Transform, &Player)>,
+    )>,
+) {
     let player_pos = {
         let player = query.q1();
         let player = player.iter().next().unwrap().0;
@@ -156,31 +229,31 @@ fn move_camera(mut query: QuerySet<(Query<(&mut Transform, &bevy::render::camera
 
 struct PluginUi(Option<Vec<common::plugin::Manifest>>);
 
-fn plugin_window_toggle(input: Res<Input<KeyCode>>, plugins: Res<PluginEvents>, mut ui: ResMut<PluginUi>) {
+fn plugin_window_toggle(
+    input: Res<Input<KeyCode>>,
+    plugins: Res<PluginEvents>,
+    mut ui: ResMut<PluginUi>,
+) {
     for key in input.get_just_released() {
         match key {
-            KeyCode::P => {
-                match ui.0 {
-                    Some(_) => ui.0 = None,
-                    None => {
-                        let tx = plugins.0.lock().unwrap();
-                        tx.send(EcsToPlugin::ListPlugins).ok();
-                        let rx = plugins.1.lock().unwrap();
-                        match rx.recv().unwrap() {
-                            PluginToEcs::ListPlugins(manifests) => {
-                                ui.0 = Some(manifests)
-                            }
-                            _ => {},
-                        }
+            KeyCode::P => match ui.0 {
+                Some(_) => ui.0 = None,
+                None => {
+                    let tx = plugins.0.lock().unwrap();
+                    tx.send(EcsToPlugin::ListPlugins).ok();
+                    let rx = plugins.1.lock().unwrap();
+                    match rx.recv().unwrap() {
+                        PluginToEcs::ListPlugins(manifests) => ui.0 = Some(manifests),
+                        _ => {}
                     }
                 }
-            }
-            _ => {},
+            },
+            _ => {}
         }
     }
 }
 
-fn plugin_window(egui: Res<bevy_egui::EguiContext>, plugins: Res<PluginUi>) {
+fn plugin_window(egui: Res<EguiContext>, plugins: Res<PluginUi>) {
     if let Some(ref manifests) = plugins.0 {
         bevy_egui::egui::Window::new("Plugins").show(egui.ctx(), |ui| {
             bevy_egui::egui::Grid::new("plugins_table").show(ui, |ui| {
@@ -200,6 +273,14 @@ fn exit(input: Res<Input<KeyCode>>, mut exit_event: EventWriter<bevy::app::AppEx
     for key in input.get_just_pressed() {
         if *key == KeyCode::Escape {
             exit_event.send(bevy::app::AppExit);
+        }
+    }
+}
+
+fn open_inventory(input: Res<Input<KeyCode>>, inv: Res<Inventory>, egui: Res<EguiContext>){
+    for key in input.get_pressed() {
+        if *key == KeyCode::E {
+            inv.open_inventory(&egui);
         }
     }
 }

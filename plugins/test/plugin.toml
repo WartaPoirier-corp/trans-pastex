@@ -1,7 +1,7 @@
 name = "Demo"
 description = "A demo/test plugin"
 icon = "none.png"
-authors = [ "kiwidu38" ]
+authors = [ "AndréRieux_pluginmaker" ]
 
 [[items]]
 name = "Axe"

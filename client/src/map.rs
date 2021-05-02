@@ -50,7 +50,7 @@ impl Map {
             },
         }
     }
-    
+
     fn mesh(&self) -> Mesh {
         let mut mesh = Mesh::new(bevy::render::pipeline::PrimitiveTopology::TriangleList);
         let mut positions = Vec::with_capacity(self.ground.len());
@@ -115,7 +115,7 @@ pub struct ShaderHandles(Handle<Shader>, Handle<Shader>);
 
 pub fn load_assets(mut commands: Commands, asset_serv: ResMut<AssetServer>) {
     asset_serv.watch_for_changes().unwrap();
-    
+
     let vert_handle = asset_serv.load::<Shader, _>("shaders/map.vert");
     let frag_handle = asset_serv.load::<Shader, _>("shaders/map.frag");
 
@@ -129,7 +129,9 @@ pub fn check_assets(
 ) {
     use bevy::asset::LoadState;
     let (vert_handle, frag_handle) = (shaders.0.clone(), shaders.1.clone());
-    if dbg!(asset_serv.get_load_state(vert_handle.clone())) != LoadState::Loading && dbg!(asset_serv.get_load_state(frag_handle.clone())) != LoadState::Loading {
+    if dbg!(asset_serv.get_load_state(vert_handle.clone())) != LoadState::Loading
+        && dbg!(asset_serv.get_load_state(frag_handle.clone())) != LoadState::Loading
+    {
         state.set(crate::State::Main).unwrap();
     }
 }
@@ -150,9 +152,7 @@ pub fn spawn_map(
 
     commands.spawn_bundle(PbrBundle {
         mesh: meshes.add(map.mesh()),
-        render_pipelines: RenderPipelines::from_pipelines(vec![
-            RenderPipeline::new(pipeline),
-        ]),
+        render_pipelines: RenderPipelines::from_pipelines(vec![RenderPipeline::new(pipeline)]),
         ..Default::default()
     });
 }
