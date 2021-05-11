@@ -1,4 +1,12 @@
 use bevy::prelude::*;
+use bevy::render::{
+    pipeline::{FrontFace, PipelineDescriptor, RenderPipeline},
+    shader::{ShaderStage, ShaderStages},
+};
+use bevy_physical_sky::{
+    PhysicalSkyCameraTag, PhysicalSkyMaterial, PhysicalSkyPlugin, SolarPosition, TimeZone, Utc,
+    PHYSICAL_SKY_FRAGMENT_SHADER, PHYSICAL_SKY_SETUP_SYSTEM, PHYSICAL_SKY_VERTEX_SHADER,
+};
 use common::plugin::Plugins;
 
 mod map;
@@ -54,6 +62,14 @@ fn main() {
         .insert_resource(PluginUi(None))
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy_egui::EguiPlugin)
+        .insert_resource(SolarPosition {
+            latitude: 45.184899,
+            longitude: 5.735446,
+            simulation_seconds_per_second: 1.0,
+            now: Utc::now(),
+            ..Default::default()
+        })
+        .add_plugin(PhysicalSkyPlugin)
         .add_system_set(SystemSet::on_enter(State::Loading)
             .with_system(map::load_assets.system())
         )
@@ -83,7 +99,29 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut shaders: ResMut<Assets<Shader>>,
+    mut pipelines: ResMut<Assets<PipelineDescriptor>>,
+    mut sky_materials: ResMut<Assets<PhysicalSkyMaterial>>,
 ) {
+    // Sky rendering
+    // Create a new shader pipeline
+    let mut pipeline_descriptor = PipelineDescriptor::default_config(ShaderStages {
+        vertex: shaders.add(Shader::from_glsl(
+            ShaderStage::Vertex,
+            PHYSICAL_SKY_VERTEX_SHADER,
+        )),
+        fragment: Some(shaders.add(Shader::from_glsl(
+            ShaderStage::Fragment,
+            PHYSICAL_SKY_FRAGMENT_SHADER,
+        ))),
+    });
+    // Reverse the winding so we can see the faces from the inside
+    pipeline_descriptor.primitive.front_face = FrontFace::Cw;
+    let pipeline = pipelines.add(pipeline_descriptor);
+
+    // Create a new material
+    let sky_material = sky_materials.add(PhysicalSkyMaterial::stellar_dawn(true));
+
     let material = asset_server.load("Sakura-1.gltf#Material0");
     let tree = asset_server.load("Sakura-1.gltf#Mesh0/Primitive0");
     // add entities to the world
@@ -106,6 +144,14 @@ fn setup(
         });
     }
 
+    // sky
+    commands.spawn().insert_bundle(MeshBundle {
+        mesh: meshes.add(Mesh::from(shape::Icosphere { radius: 49.0, subdivisions: 5 })),
+        render_pipelines: RenderPipelines::from_pipelines(vec![ RenderPipeline::new(pipeline) ]),
+        ..Default::default()
+    })
+    .insert(sky_material);
+
     // cube
     commands.spawn().insert_bundle(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Cube { size: 0.5 })),
@@ -124,7 +170,7 @@ fn setup(
         transform: Transform::from_translation(Vec3::new(10.0, 3.0, 5.0))
             .looking_at(Vec3::new(5.0, 0.5, 5.0), Vec3::Y),
         ..Default::default()
-    });
+    }).insert(PhysicalSkyCameraTag);
 }
 
 const SPEED: f32 = 1.0;
