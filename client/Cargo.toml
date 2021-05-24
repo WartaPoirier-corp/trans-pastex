@@ -16,4 +16,6 @@ bevy = { version = "0.5", default-features = false, features = [
 ] }
 bevy_egui = "0.4"
 common = { path = "../common" }
+heron = { git = "https://github.com/elegaanz/heron.git", rev = "1da53492d5e98436277177ee1607b0f5eec588db" }
+#heron = { path = "../../heron" }
 runestick = "0.9"

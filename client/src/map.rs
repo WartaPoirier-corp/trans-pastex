@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use heron::prelude::*;
 use bevy::render::pipeline::{PipelineDescriptor, RenderPipeline};
 use bevy::render::shader::ShaderStages;
 
@@ -16,16 +17,17 @@ pub struct Map {
 }
 
 impl Map {
-    fn build_map() -> Map {
+    fn build_map(dim: u32) -> Map {
         Map {
-            dimensions: (20, 20),
+            dimensions: (dim, dim),
             ground: {
-                let mut ground = Vec::with_capacity(20 * 20);
-                for i in 0..20 {
-                    for j in 0..20 {
-                        let t = if 10 < i && i < 15 && (j - i) < 2 {
+                let mut ground = Vec::with_capacity((dim * dim) as usize);
+                let dim = dim as i32;
+                for i in 0..dim {
+                    for j in 0..dim {
+                        let t = if (10 < i && i < 15 && (j - i) < 2) || (j % 10 < 2 && i % 7 < 3 && ((i + j) % 2 == 1)) {
                             GroundType::Dirt
-                        } else if i < 4 && j <= i {
+                        } else if (i % 20 + ((j as f32).sin() as i32)) < 4 && (j % 40) <= i {
                             GroundType::Water
                         } else if i % 7 == j {
                             GroundType::Rock
@@ -38,7 +40,7 @@ impl Map {
                         } else if (i % 3 == 0 && j % 5 == 0) || (i + j % 13 < 2) {
                             1
                         } else if i > 15 {
-                            (j + i - 15) / 5
+                            ((((j + i - 15) / 5) as f32).sin() * 4.0) as u32
                         } else {
                             0
                         };
@@ -59,10 +61,12 @@ impl Map {
         let mut indices = Vec::with_capacity(self.ground.len() * 3 * 2);
         let mut uv = Vec::with_capacity(self.ground.len());
         let (i, j) = self.dimensions;
+        let half_i = i as f32 / 2.0;
+        let half_j = j as f32 / 2.0;
         for x in 0..i {
             for y in 0..j {
-                let (t, h) = self.ground[(x as usize) * 20 + (y as usize)];
-                positions.push([x as f32, (h as f32) * 0.5, y as f32]);
+                let (t, h) = self.ground[(x as usize) * (i as usize) + (y as usize)];
+                positions.push([(x as f32) - half_i + 0.75, (h as f32) * 0.5, (y as f32) - half_j + 0.75]);
 
                 colors.push(match t {
                     GroundType::Water => [0.0, 0.1, 0.8],
@@ -72,8 +76,8 @@ impl Map {
                 });
 
                 // TODO: this is probably very wrong
-                let prev_h = if x > 0 && y < 19 {
-                    let top_right_index = (x - 1) * 20 + y + 1;
+                let prev_h = if x > 0 && y < j - 1 {
+                    let top_right_index = (x - 1) * i + y + 1;
                     self.ground[top_right_index as usize].1 as f32
                 } else {
                     h as f32
@@ -84,11 +88,11 @@ impl Map {
 
                 uv.push([(x as f32) / (i as f32), (y as f32) / (j as f32)]);
 
-                if x > 0 && y < 19 {
-                    let top_index = (x - 1) * 20 + y;
-                    let right_index = x * 20 + y + 1;
-                    let top_right_index = (x - 1) * 20 + y + 1;
-                    let current_index = x * 20 + y;
+                if x > 0 && y < (j - 1) {
+                    let top_index = (x - 1) * i + y;
+                    let right_index = x * i + y + 1;
+                    let top_right_index = (x - 1) * i + y + 1;
+                    let current_index = x * i + y;
 
                     indices.push(top_index);
                     indices.push(top_right_index);
@@ -108,6 +112,22 @@ impl Map {
         mesh.set_indices(Some(bevy::render::mesh::Indices::U32(indices)));
 
         mesh
+    }
+
+    fn collision_shape(&self) -> Vec<Vec<f32>> {
+        let (i, j) = self.dimensions;
+        let mut res = Vec::with_capacity(i as usize);
+
+        for x in 0..i {
+            let mut line = Vec::with_capacity(j as usize);
+            for y in 0..j {
+                let (_, h) = self.ground[(x * i + y) as usize];
+                line.push((h as f32) * 0.5);
+            }
+            res.push(line);
+        }
+
+        res
     }
 }
 
@@ -146,7 +166,7 @@ pub fn spawn_map(
         fragment: Some(frag_handle.clone()),
     }));
 
-    let map = Map::build_map();
+    let map = Map::build_map(50);
 
     commands.spawn_bundle(PbrBundle {
         mesh: meshes.add(map.mesh()),
@@ -154,5 +174,11 @@ pub fn spawn_map(
             RenderPipeline::new(pipeline),
         ]),
         ..Default::default()
-    });
+    })
+    .insert(CollisionShape::HeightField { heights: map.collision_shape(), scale: 1.0 })
+    .insert(PhysicMaterial {
+        restitution: 0.0,
+        ..Default::default()
+    })
+    .insert(RigidBody::Static);
 }
