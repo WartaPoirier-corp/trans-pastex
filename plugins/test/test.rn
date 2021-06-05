@@ -1,3 +1,24 @@
 pub fn test(x) {
     x * 2
 }
+
+pub fn mettre_des_rochers() {
+    for _ in 1..1000 {
+        let x = random(0, 1000);
+        let y = random(0, 1000);
+
+        let rocher = add_to_map("Rock", x, y);
+        rocher.damage = 0;
+    }
+}
+
+pub fn pioche_un_rocher(joueur, rocher) {
+    while rocher.damage < 3 {
+        play_animation(joueur, "Piocher");
+        rocher.damage += 1;
+    }
+    add_to_inventory(joueur, "Emerald");
+    remove_from_map(rocher);
+}
+
+

@@ -2,6 +2,18 @@ name = "Demo"
 description = "A demo/test plugin"
 icon = "none.png"
 authors = [ "kiwidu38" ]
+on_spawn_map = "mettre_des_rochers"
+
 
 [[items]]
 name = "Axe"
+
+[[items]]
+name = "Rock"
+model = "rock.obj"
+on_interaction = "pioche_un_rocher"
+variables = [ "damage" ]
+crossable = false
+
+[[items]]
+name = "Emerald"
