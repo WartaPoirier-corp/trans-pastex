@@ -5,3 +5,5 @@ authors = [ "AndréRieux_pluginmaker" ]
 
 [[items]]
 name = "Axe"
+quantity = 1
+icon = "my_axe.png"

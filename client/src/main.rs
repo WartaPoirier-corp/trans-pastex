@@ -1,9 +1,12 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, window::{WindowMode, WindowCommand}};
+use bevy_egui::{egui::TextureId, EguiContext};
 use common::item::*;
 use common::plugin::Plugins;
-use bevy_egui::EguiContext;
+use std::fs::{read_to_string, File};
 
 mod map;
+
+const AXE_TEXTURE_ID: u64 = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum State {
@@ -25,17 +28,13 @@ struct PluginEvents(
     std::sync::Mutex<std::sync::mpsc::Sender<EcsToPlugin>>,
     std::sync::Mutex<std::sync::mpsc::Receiver<PluginToEcs>>,
 );
-#[derive(Clone)]
-struct InventoryItem {
-    name: String,
-    x: u8,
-    y: u8,
-    quantity: u8,
-}
+
 
 struct Inventory {
-    items: Vec<Vec<Option<InventoryItem>>>,
+    items: Vec<Vec<Option<Item>>>,
 }
+
+struct InventoryUi(bool);
 
 impl Inventory {
     fn new() -> Inventory {
@@ -43,7 +42,13 @@ impl Inventory {
         for y in 0..5 {
             let mut subitems = vec![];
             for x in 0..9 {
-                subitems.push(None);
+                subitems.push(Some(
+                    Item {
+                        name: "axe".to_string(),
+                        quantity: 0,
+                        icon: "my_axe.png".to_string(),
+                    }
+                ));
             }
             items.push(subitems);
         }
@@ -51,29 +56,56 @@ impl Inventory {
     }
 
     fn open_inventory(&self, egui_context: &EguiContext) {
-        bevy_egui::egui::Window::new("Inventory").default_pos((300.0, 220.0)).show(egui_context.ctx(), |ui| {
-            bevy_egui::egui::Grid::new("inventory_table").show(ui, |ui| {
-                for (nby, y) in self.items.clone().into_iter().enumerate() {
-                    for (nbx, x) in y.into_iter().enumerate() {
-                        match x {
-                            Some(item) => {
-                                ui.group(|ui|{
-                                    ui.label("Je suis pas vide");
-                                });
-                            }
-                            None => {
-                                ui.group(|ui|{
-                                    ui.label("Je suis vide");
-                                });
-                            }
+        bevy_egui::egui::Window::new("Inventory")
+            .default_pos((300.0, 220.0))
+            .show(egui_context.ctx(), |ui| {
+                bevy_egui::egui::Grid::new("Inventory table").show(ui, |ui| {
+                    for (nby, y) in self.items.clone().into_iter().enumerate() {
+                        for (nbx, x) in y.into_iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                match x {
+                                    Some(item) => {
+                                        let texture = TextureId::User(AXE_TEXTURE_ID);
+                                        ui.image(texture, (50.0, 50.0));
+                                    }
+                                    None => {
+                                        ui.image(TextureId::Egui, (50.0, 50.0));
+                                    }
+                                }
+                            });
                         }
+                        ui.end_row();
                     }
-                    ui.end_row();
-                }
+                });
             });
-        });
     }
 }
+
+/* struct Inventory {
+    items: Vec<InventoryItem>,
+}
+
+impl Inventory {
+    fn new() -> Inventory {
+        let axe = InventoryItem {
+            name: "axe".to_string(),
+            quantity: 1,
+            icon: "my_axe.png".to_string(),
+        };
+        let inv = Inventory { 
+            items: vec![axe], 
+        };
+        inv
+    }
+
+    fn open_inventory(&self, egui_context: &EguiContext) {
+        bevy_egui::egui::Window::new("Inventory")
+            .show(egui_context.ctx(), |ui| {  
+                let texture = TextureId::User(AXE_TEXTURE_ID);
+                ui.image(texture, (30.0, 30.0));
+            });
+    }
+} */
 
 fn main() {
     let (plug_tx, plug_rx) = std::sync::mpsc::channel();
@@ -106,6 +138,7 @@ fn main() {
     });
 
     App::build()
+        .insert_resource(WindowMode::BorderlessFullscreen)
         .add_state(State::Loading)
         .insert_resource(Msaa { samples: 4 })
         .insert_resource(PluginEvents(
@@ -113,6 +146,7 @@ fn main() {
             std::sync::Mutex::new(ecs_rx),
         ))
         .insert_resource(PluginUi(None))
+        .insert_resource(InventoryUi(false))
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy_egui::EguiPlugin)
         .add_system_set(SystemSet::on_enter(State::Loading).with_system(map::load_assets.system()))
@@ -144,11 +178,14 @@ struct Player;
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    mut egui_context: ResMut<EguiContext>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let material = asset_server.load("Sakura-1.gltf#Material0");
     let tree = asset_server.load("Sakura-1.gltf#Mesh0/Primitive0");
+    let texture_handle = asset_server.load("my_axe.png");
+    egui_context.set_egui_texture(AXE_TEXTURE_ID, texture_handle);
     // add entities to the world
 
     for i in 0..10 {
@@ -277,10 +314,19 @@ fn exit(input: Res<Input<KeyCode>>, mut exit_event: EventWriter<bevy::app::AppEx
     }
 }
 
-fn open_inventory(input: Res<Input<KeyCode>>, inv: Res<Inventory>, egui: Res<EguiContext>){
-    for key in input.get_pressed() {
-        if *key == KeyCode::E {
-            inv.open_inventory(&egui);
+fn open_inventory(input: Res<Input<KeyCode>>, inv: Res<Inventory>, egui: Res<EguiContext>, mut ui: ResMut<InventoryUi>,) {
+    for key in input.get_just_released() {
+        match key {
+            KeyCode::E => match ui.0 {
+                false => {
+                    ui.0 = true;
+                },
+                true => ui.0 = false,
+            },
+            _ => {},
         }
+    }
+    if ui.0 {
+        inv.open_inventory(&egui);
     }
 }
