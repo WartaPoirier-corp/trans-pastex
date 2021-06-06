@@ -24,7 +24,7 @@
         gnumake vulkan-validation-layers
       ];
       nativeBuildInputs = [ pkgs.pkg-config pkgs.renderdoc ];
-      LD_LIBRARY_PATH = "${pkgs.vulkan-loader}/lib:${pkgs.libxkbcommon}/lib:${pkgs.wayland}/lib:${pkgs.xorg.libxcb}/lib";
+      LD_LIBRARY_PATH = "${pkgs.vulkan-loader}/lib:${pkgs.libxkbcommon}/lib:${pkgs.wayland}/lib:${pkgs.xorg.libxcb}/lib:${pkgs.udev}/lib:${pkgs.alsaLib}/lib";
       RUST_BACKTRACE = 1;
       VK_ICD_FILENAMES="/run/opengl-driver/share/vulkan/icd.d/intel_icd.x86_64.json";
     };
