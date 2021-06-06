@@ -5,8 +5,9 @@ use bevy::render::{
 };
 use bevy_physical_sky::{
     PhysicalSkyCameraTag, PhysicalSkyMaterial, PhysicalSkyPlugin, SolarPosition, TimeZone, Utc,
-    PHYSICAL_SKY_FRAGMENT_SHADER, PHYSICAL_SKY_SETUP_SYSTEM, PHYSICAL_SKY_VERTEX_SHADER,
+    PHYSICAL_SKY_FRAGMENT_SHADER, PHYSICAL_SKY_VERTEX_SHADER,
 };
+use heron::prelude::*;
 use common::plugin::Plugins;
 
 mod map;
@@ -70,6 +71,8 @@ fn main() {
             ..Default::default()
         })
         .add_plugin(PhysicalSkyPlugin)
+        .add_plugin(PhysicsPlugin::default())
+        .insert_resource(Gravity::from(Vec3::new(0.0, -98.1, 0.0)))
         .add_system_set(SystemSet::on_enter(State::Loading)
             .with_system(map::load_assets.system())
         )
@@ -81,12 +84,12 @@ fn main() {
             .with_system(map::spawn_map.system())
         )
         .add_system_set(SystemSet::on_update(State::Main)
-            .with_system(bevy::input::keyboard::keyboard_input_system.system())
-            .with_system(move_player.system())
-            .with_system(move_camera.system())
             .with_system(plugin_window_toggle.system())
             .with_system(plugin_window.system())
             .with_system(exit.system())
+            .with_system(bevy::input::keyboard::keyboard_input_system.system())
+            .with_system(move_player.system())
+            .with_system(move_camera.system())
         )
         .run();
 }
@@ -126,22 +129,24 @@ fn setup(
     let tree = asset_server.load("Sakura-1.gltf#Mesh0/Primitive0");
     // add entities to the world
 
-    for i in 0..10 {
+    for i in 0..25 {
         commands.spawn()
             .insert_bundle(PbrBundle {
             mesh: tree.clone(),
             material: material.clone(),
             transform: {
                 let mut transform = Transform::from_translation(Vec3::new(
-                    10.0 + (i as f32).cos() * (i as f32),
+                    (i as f32).cos() * (i as f32),
                     0.0,
-                    ((i as f32) + 7.0) - 2.0 * (i as f32).sin()),
+                    15.0 * (i as f32).sin()),
                 );
                 transform.apply_non_uniform_scale(Vec3::new(0.2, 0.2, 0.2));
                 transform
             },
             ..Default::default()
-        });
+        })
+        .insert(CollisionShape::Cuboid { half_extends: Vec3::new(0.1, 3.0, 0.1) })
+        .insert(RigidBody::Static);
     }
 
     // sky
@@ -156,14 +161,22 @@ fn setup(
     commands.spawn().insert_bundle(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Cube { size: 0.5 })),
         material: materials.add(Color::rgb(1.0, 0.7, 0.7).into()),
-        transform: Transform::from_translation(Vec3::new(5.0, 0.5, 5.0)),
+        global_transform: GlobalTransform::from_translation(Vec3::new(0.0, 0.25, 0.0)),
+        transform: Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
         ..Default::default()
     })
-    .insert(Player);
-    // light
-    commands.spawn().insert_bundle(LightBundle {
-        transform: Transform::from_translation(Vec3::new(10.0, 8.0, 10.0)),
-        ..Default::default()
+    .insert(Player)
+    .insert(RigidBody::Dynamic)
+    .insert(CollisionShape::Sphere { radius: 0.25 })
+    // .insert(CollisionShape::Cuboid { half_extends: Vec3::new(0.25, 0.25, 0.25) })
+    .insert(RotationConstraints { allow_x: false, allow_z: false, allow_y: true })
+    .insert(Velocity::default())
+    .with_children(|c| {
+        // light
+        c.spawn().insert_bundle(LightBundle {
+            transform: Transform::from_translation(Vec3::new(0.0, 8.0, 0.0)),
+            ..Default::default()
+        });
     });
     // camera
     commands.spawn().insert_bundle(PerspectiveCameraBundle {
@@ -173,18 +186,24 @@ fn setup(
     }).insert(PhysicalSkyCameraTag);
 }
 
-const SPEED: f32 = 1.0;
+const SPEED: f32 = 2.0;
 
-fn move_player(time: Res<Time>, input: Res<Input<KeyCode>>, mut player: Query<&mut Transform, With<Player>>) {
-    let player = &mut player.iter_mut().next().unwrap();
+fn move_player(input: Res<Input<KeyCode>>, mut player: Query<&mut Velocity, With<Player>>) {
+    let velocity = &mut player.iter_mut().next().unwrap();
+    velocity.linear = Vec3::ZERO;
     for key in input.get_pressed() {
-        let mov = SPEED * time.delta_seconds();
         match key {
-            KeyCode::Z | KeyCode::Up => player.translation.x -= mov,
-            KeyCode::S | KeyCode::Down => player.translation.x += mov,
-            KeyCode::Q | KeyCode::Left => player.translation.z += mov,
-            KeyCode::D | KeyCode::Right => player.translation.z -= mov,
+            KeyCode::Z | KeyCode::Up => velocity.linear.x = -SPEED,
+            KeyCode::S | KeyCode::Down => velocity.linear.x = SPEED,
+            KeyCode::Q | KeyCode::Left => velocity.linear.z = SPEED,
+            KeyCode::D | KeyCode::Right => velocity.linear.z = -SPEED,
             _ => {},
+        }
+    }
+
+    for key in input.get_just_pressed() {
+        if *key == KeyCode::Space {
+            velocity.linear.y = 100.0;
         }
     }
 }

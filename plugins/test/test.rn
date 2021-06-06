@@ -2,7 +2,7 @@ pub fn test(x) {
     x * 2
 }
 
-pub fn mettre_des_rochers() {
+/*pub fn mettre_des_rochers() {
     for _ in 1..1000 {
         let x = random(0, 1000);
         let y = random(0, 1000);
@@ -20,5 +20,4 @@ pub fn pioche_un_rocher(joueur, rocher) {
     add_to_inventory(joueur, "Emerald");
     remove_from_map(rocher);
 }
-
-
+*/
