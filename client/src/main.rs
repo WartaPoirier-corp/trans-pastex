@@ -1,7 +1,19 @@
-use bevy::{prelude::*, window::{WindowMode, WindowCommand}};
+use bevy::render::{
+    pipeline::{FrontFace, PipelineDescriptor, RenderPipeline},
+    shader::{ShaderStage, ShaderStages},
+};
+use bevy::{
+    prelude::*,
+    window::{WindowCommand, WindowMode},
+};
 use bevy_egui::{egui::TextureId, EguiContext};
+use bevy_physical_sky::{
+    PhysicalSkyCameraTag, PhysicalSkyMaterial, PhysicalSkyPlugin, SolarPosition, TimeZone, Utc,
+    PHYSICAL_SKY_FRAGMENT_SHADER, PHYSICAL_SKY_VERTEX_SHADER,
+};
 use common::item::*;
 use common::plugin::Plugins;
+use heron::prelude::*;
 use std::fs::{read_to_string, File};
 
 mod map;
@@ -29,7 +41,6 @@ struct PluginEvents(
     std::sync::Mutex<std::sync::mpsc::Receiver<PluginToEcs>>,
 );
 
-
 struct Inventory {
     items: Vec<Vec<Option<Item>>>,
 }
@@ -42,13 +53,11 @@ impl Inventory {
         for y in 0..5 {
             let mut subitems = vec![];
             for x in 0..9 {
-                subitems.push(Some(
-                    Item {
-                        name: "axe".to_string(),
-                        quantity: 0,
-                        icon: "my_axe.png".to_string(),
-                    }
-                ));
+                subitems.push(Some(Item {
+                    name: "axe".to_string(),
+                    quantity: 0,
+                    icon: "my_axe.png".to_string(),
+                }));
             }
             items.push(subitems);
         }
@@ -62,15 +71,13 @@ impl Inventory {
                 bevy_egui::egui::Grid::new("Inventory table").show(ui, |ui| {
                     for (nby, y) in self.items.clone().into_iter().enumerate() {
                         for (nbx, x) in y.into_iter().enumerate() {
-                            ui.horizontal(|ui| {
-                                match x {
-                                    Some(item) => {
-                                        let texture = TextureId::User(AXE_TEXTURE_ID);
-                                        ui.image(texture, (50.0, 50.0));
-                                    }
-                                    None => {
-                                        ui.image(TextureId::Egui, (50.0, 50.0));
-                                    }
+                            ui.horizontal(|ui| match x {
+                                Some(item) => {
+                                    let texture = TextureId::User(AXE_TEXTURE_ID);
+                                    ui.image(texture, (50.0, 50.0));
+                                }
+                                None => {
+                                    ui.image(TextureId::Egui, (50.0, 50.0));
                                 }
                             });
                         }
@@ -92,15 +99,15 @@ impl Inventory {
             quantity: 1,
             icon: "my_axe.png".to_string(),
         };
-        let inv = Inventory { 
-            items: vec![axe], 
+        let inv = Inventory {
+            items: vec![axe],
         };
         inv
     }
 
     fn open_inventory(&self, egui_context: &EguiContext) {
         bevy_egui::egui::Window::new("Inventory")
-            .show(egui_context.ctx(), |ui| {  
+            .show(egui_context.ctx(), |ui| {
                 let texture = TextureId::User(AXE_TEXTURE_ID);
                 ui.image(texture, (30.0, 30.0));
             });
@@ -149,11 +156,21 @@ fn main() {
         .insert_resource(InventoryUi(false))
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy_egui::EguiPlugin)
+        .insert_resource(SolarPosition {
+            latitude: 45.184899,
+            longitude: 5.735446,
+            simulation_seconds_per_second: 1.0,
+            now: Utc::now(),
+            ..Default::default()
+        })
+        .add_plugin(PhysicalSkyPlugin)
+        .add_plugin(PhysicsPlugin::default())
+        .insert_resource(Gravity::from(Vec3::new(0.0, -98.1, 0.0)))
+        .insert_resource(inv)
         .add_system_set(SystemSet::on_enter(State::Loading).with_system(map::load_assets.system()))
         .add_system_set(
             SystemSet::on_update(State::Loading).with_system(map::check_assets.system()),
         )
-        .insert_resource(inv)
         .add_system_set(
             SystemSet::on_enter(State::Main)
                 .with_system(setup.system())
@@ -181,29 +198,70 @@ fn setup(
     mut egui_context: ResMut<EguiContext>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut shaders: ResMut<Assets<Shader>>,
+    mut pipelines: ResMut<Assets<PipelineDescriptor>>,
+    mut sky_materials: ResMut<Assets<PhysicalSkyMaterial>>,
 ) {
+    // Sky rendering
+    // Create a new shader pipeline
+    let mut pipeline_descriptor = PipelineDescriptor::default_config(ShaderStages {
+        vertex: shaders.add(Shader::from_glsl(
+            ShaderStage::Vertex,
+            PHYSICAL_SKY_VERTEX_SHADER,
+        )),
+        fragment: Some(shaders.add(Shader::from_glsl(
+            ShaderStage::Fragment,
+            PHYSICAL_SKY_FRAGMENT_SHADER,
+        ))),
+    });
+    // Reverse the winding so we can see the faces from the inside
+    pipeline_descriptor.primitive.front_face = FrontFace::Cw;
+    let pipeline = pipelines.add(pipeline_descriptor);
+
+    // Create a new material
+    let sky_material = sky_materials.add(PhysicalSkyMaterial::stellar_dawn(true));
+
     let material = asset_server.load("Sakura-1.gltf#Material0");
     let tree = asset_server.load("Sakura-1.gltf#Mesh0/Primitive0");
     let texture_handle = asset_server.load("my_axe.png");
     egui_context.set_egui_texture(AXE_TEXTURE_ID, texture_handle);
     // add entities to the world
 
-    for i in 0..10 {
-        commands.spawn().insert_bundle(PbrBundle {
-            mesh: tree.clone(),
-            material: material.clone(),
-            transform: {
-                let mut transform = Transform::from_translation(Vec3::new(
-                    10.0 + (i as f32).cos() * (i as f32),
-                    0.0,
-                    ((i as f32) + 7.0) - 2.0 * (i as f32).sin(),
-                ));
-                transform.apply_non_uniform_scale(Vec3::new(0.2, 0.2, 0.2));
-                transform
-            },
-            ..Default::default()
-        });
+    for i in 0..25 {
+        commands
+            .spawn()
+            .insert_bundle(PbrBundle {
+                mesh: tree.clone(),
+                material: material.clone(),
+                transform: {
+                    let mut transform = Transform::from_translation(Vec3::new(
+                        (i as f32).cos() * (i as f32),
+                        0.0,
+                        15.0 * (i as f32).sin(),
+                    ));
+                    transform.apply_non_uniform_scale(Vec3::new(0.2, 0.2, 0.2));
+                    transform
+                },
+                ..Default::default()
+            })
+            .insert(CollisionShape::Cuboid {
+                half_extends: Vec3::new(0.1, 3.0, 0.1),
+            })
+            .insert(RigidBody::Static);
     }
+
+    // sky
+    commands
+        .spawn()
+        .insert_bundle(MeshBundle {
+            mesh: meshes.add(Mesh::from(shape::Icosphere {
+                radius: 49.0,
+                subdivisions: 5,
+            })),
+            render_pipelines: RenderPipelines::from_pipelines(vec![RenderPipeline::new(pipeline)]),
+            ..Default::default()
+        })
+        .insert(sky_material);
 
     // cube
     commands
@@ -211,39 +269,56 @@ fn setup(
         .insert_bundle(PbrBundle {
             mesh: meshes.add(Mesh::from(shape::Cube { size: 0.5 })),
             material: materials.add(Color::rgb(1.0, 0.7, 0.7).into()),
-            transform: Transform::from_translation(Vec3::new(5.0, 0.5, 5.0)),
+            global_transform: GlobalTransform::from_translation(Vec3::new(0.0, 0.25, 0.0)),
+            transform: Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
             ..Default::default()
         })
-        .insert(Player);
-    // light
-    commands.spawn().insert_bundle(LightBundle {
-        transform: Transform::from_translation(Vec3::new(10.0, 8.0, 10.0)),
-        ..Default::default()
-    });
+        .insert(Player)
+        .insert(RigidBody::Dynamic)
+        .insert(CollisionShape::Sphere { radius: 0.25 })
+        // .insert(CollisionShape::Cuboid { half_extends: Vec3::new(0.25, 0.25, 0.25) })
+        .insert(RotationConstraints {
+            allow_x: false,
+            allow_z: false,
+            allow_y: true,
+        })
+        .insert(Velocity::default())
+        .with_children(|c| {
+            // light
+            c.spawn().insert_bundle(LightBundle {
+                transform: Transform::from_translation(Vec3::new(0.0, 8.0, 0.0)),
+                ..Default::default()
+            });
+        });
     // camera
-    commands.spawn().insert_bundle(PerspectiveCameraBundle {
-        transform: Transform::from_translation(Vec3::new(10.0, 3.0, 5.0))
-            .looking_at(Vec3::new(5.0, 0.5, 5.0), Vec3::Y),
-        ..Default::default()
-    });
+    commands
+        .spawn()
+        .insert_bundle(PerspectiveCameraBundle {
+            transform: Transform::from_translation(Vec3::new(10.0, 3.0, 5.0))
+                .looking_at(Vec3::new(5.0, 0.5, 5.0), Vec3::Y),
+            ..Default::default()
+        })
+        .insert(PhysicalSkyCameraTag);
 }
 
-const SPEED: f32 = 1.0;
+const SPEED: f32 = 2.0;
 
-fn move_player(
-    time: Res<Time>,
-    input: Res<Input<KeyCode>>,
-    mut player: Query<&mut Transform, With<Player>>,
-) {
-    let player = &mut player.iter_mut().next().unwrap();
+fn move_player(input: Res<Input<KeyCode>>, mut player: Query<&mut Velocity, With<Player>>) {
+    let velocity = &mut player.iter_mut().next().unwrap();
+    velocity.linear = Vec3::ZERO;
     for key in input.get_pressed() {
-        let mov = SPEED * time.delta_seconds();
         match key {
-            KeyCode::Z | KeyCode::Up => player.translation.x -= mov,
-            KeyCode::S | KeyCode::Down => player.translation.x += mov,
-            KeyCode::Q | KeyCode::Left => player.translation.z += mov,
-            KeyCode::D | KeyCode::Right => player.translation.z -= mov,
+            KeyCode::Z | KeyCode::Up => velocity.linear.x = -SPEED,
+            KeyCode::S | KeyCode::Down => velocity.linear.x = SPEED,
+            KeyCode::Q | KeyCode::Left => velocity.linear.z = SPEED,
+            KeyCode::D | KeyCode::Right => velocity.linear.z = -SPEED,
             _ => {}
+        }
+    }
+
+    for key in input.get_just_pressed() {
+        if *key == KeyCode::Space {
+            velocity.linear.y = 100.0;
         }
     }
 }
@@ -314,16 +389,21 @@ fn exit(input: Res<Input<KeyCode>>, mut exit_event: EventWriter<bevy::app::AppEx
     }
 }
 
-fn open_inventory(input: Res<Input<KeyCode>>, inv: Res<Inventory>, egui: Res<EguiContext>, mut ui: ResMut<InventoryUi>,) {
+fn open_inventory(
+    input: Res<Input<KeyCode>>,
+    inv: Res<Inventory>,
+    egui: Res<EguiContext>,
+    mut ui: ResMut<InventoryUi>,
+) {
     for key in input.get_just_released() {
         match key {
             KeyCode::E => match ui.0 {
                 false => {
                     ui.0 = true;
-                },
+                }
                 true => ui.0 = false,
             },
-            _ => {},
+            _ => {}
         }
     }
     if ui.0 {

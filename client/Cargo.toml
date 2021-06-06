@@ -15,5 +15,7 @@ bevy = { version = "0.5", default-features = false, features = [
     "x11",
 ] }
 bevy_egui = "0.4"
+bevy-physical-sky = { git = "https://github.com/superdump/minkraft.git", rev = "57d73b7f3671429573dab5af1a86d64920ee9d96" }
 common = { path = "../common" }
+heron = { git = "https://github.com/jcornaz/heron.git", rev = "cb57cf2b18c245a6db0925c4d435d3f02e4cce09" }
 runestick = "0.9"
