@@ -1,7 +1,7 @@
 use bevy::prelude::*;
-use heron::prelude::*;
 use bevy::render::pipeline::{PipelineDescriptor, RenderPipeline};
 use bevy::render::shader::ShaderStages;
+use heron::prelude::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum GroundType {
@@ -25,7 +25,9 @@ impl Map {
                 let dim = dim as i32;
                 for i in 0..dim {
                     for j in 0..dim {
-                        let t = if (10 < i && i < 15 && (j - i) < 2) || (j % 10 < 2 && i % 7 < 3 && ((i + j) % 2 == 1)) {
+                        let t = if (10 < i && i < 15 && (j - i) < 2)
+                            || (j % 10 < 2 && i % 7 < 3 && ((i + j) % 2 == 1))
+                        {
                             GroundType::Dirt
                         } else if (i % 20 + ((j as f32).sin() as i32)) < 4 && (j % 40) <= i {
                             GroundType::Water
@@ -52,7 +54,7 @@ impl Map {
             },
         }
     }
-    
+
     fn mesh(&self) -> Mesh {
         let mut mesh = Mesh::new(bevy::render::pipeline::PrimitiveTopology::TriangleList);
         let mut positions = Vec::with_capacity(self.ground.len());
@@ -66,7 +68,11 @@ impl Map {
         for x in 0..i {
             for y in 0..j {
                 let (t, h) = self.ground[(x as usize) * (i as usize) + (y as usize)];
-                positions.push([(x as f32) - half_i + 0.75, (h as f32) * 0.5, (y as f32) - half_j + 0.75]);
+                positions.push([
+                    (x as f32) - half_i + 0.75,
+                    (h as f32) * 0.5,
+                    (y as f32) - half_j + 0.75,
+                ]);
 
                 colors.push(match t {
                     GroundType::Water => [0.0, 0.1, 0.8],
@@ -135,7 +141,7 @@ pub struct ShaderHandles(Handle<Shader>, Handle<Shader>);
 
 pub fn load_assets(mut commands: Commands, asset_serv: ResMut<AssetServer>) {
     asset_serv.watch_for_changes().unwrap();
-    
+
     let vert_handle = asset_serv.load::<Shader, _>("shaders/map.vert");
     let frag_handle = asset_serv.load::<Shader, _>("shaders/map.frag");
 
@@ -149,7 +155,9 @@ pub fn check_assets(
 ) {
     use bevy::asset::LoadState;
     let (vert_handle, frag_handle) = (shaders.0.clone(), shaders.1.clone());
-    if dbg!(asset_serv.get_load_state(vert_handle.clone())) != LoadState::Loading && dbg!(asset_serv.get_load_state(frag_handle.clone())) != LoadState::Loading {
+    if dbg!(asset_serv.get_load_state(vert_handle.clone())) != LoadState::Loading
+        && dbg!(asset_serv.get_load_state(frag_handle.clone())) != LoadState::Loading
+    {
         state.set(crate::State::Main).unwrap();
     }
 }
@@ -168,17 +176,19 @@ pub fn spawn_map(
 
     let map = Map::build_map(50);
 
-    commands.spawn_bundle(PbrBundle {
-        mesh: meshes.add(map.mesh()),
-        render_pipelines: RenderPipelines::from_pipelines(vec![
-            RenderPipeline::new(pipeline),
-        ]),
-        ..Default::default()
-    })
-    .insert(CollisionShape::HeightField { heights: map.collision_shape(), scale: 1.0 })
-    .insert(PhysicMaterial {
-        restitution: 0.0,
-        ..Default::default()
-    })
-    .insert(RigidBody::Static);
+    commands
+        .spawn_bundle(PbrBundle {
+            mesh: meshes.add(map.mesh()),
+            render_pipelines: RenderPipelines::from_pipelines(vec![RenderPipeline::new(pipeline)]),
+            ..Default::default()
+        })
+        .insert(CollisionShape::HeightField {
+            heights: map.collision_shape(),
+            scale: 1.0,
+        })
+        .insert(PhysicMaterial {
+            restitution: 0.0,
+            ..Default::default()
+        })
+        .insert(RigidBody::Static);
 }

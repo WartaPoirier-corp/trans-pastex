@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
-use runestick::Vm;
 use rune::EmitDiagnostics;
+use runestick::Vm;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -31,22 +31,20 @@ impl Plugin {
                 sources.insert(runestick::Source::from_path(&path).unwrap());
             }
         }
-        
+
         let mut diags = rune::Diagnostics::new();
         let result = rune::load_sources(&ctx, &rune::Options::default(), &mut sources, &mut diags);
 
         if !diags.is_empty() {
-            let mut writer = rune::termcolor::StandardStream::stdout(rune::termcolor::ColorChoice::Auto);
+            let mut writer =
+                rune::termcolor::StandardStream::stdout(rune::termcolor::ColorChoice::Auto);
             diags.emit_diagnostics(&mut writer, &sources).unwrap();
         }
 
         let unit = result.unwrap();
         let vm = Vm::new(Arc::new(ctx.runtime()), Arc::new(unit));
 
-        Plugin {
-            vm,
-            manifest,
-        }
+        Plugin { vm, manifest }
     }
 }
 
@@ -55,14 +53,17 @@ pub struct Plugins(pub Vec<Plugin>);
 impl Plugins {
     pub fn init() -> Plugins {
         Plugins(
-            std::fs::read_dir("plugins").unwrap().filter_map(|entry| {
-                let entry = entry.unwrap();
-                if entry.file_type().unwrap().is_dir() {
-                    Some(Plugin::read(entry.path()))
-                } else {
-                    None
-                }
-            }).collect()
+            std::fs::read_dir("plugins")
+                .unwrap()
+                .filter_map(|entry| {
+                    let entry = entry.unwrap();
+                    if entry.file_type().unwrap().is_dir() {
+                        Some(Plugin::read(entry.path()))
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
         )
     }
 }
